@@ -146,6 +146,9 @@ void *lookup(char *name, int len)
 int main(int argc, char *argv[])
 {
   void *word_addr;
+  char *end_ptr;
+  long l;
+  
   mf_printf("maxForth\n");
   stack = (cell_t*)mf_malloc(sizeof(cell_t) * STACK_SIZE);
   if(stack == NULL) {
@@ -164,7 +167,11 @@ int main(int argc, char *argv[])
   while(get_next()) {
     word_addr = lookup(word, word_len);
     if(word_addr == NULL) {
-      push(strtol(word, NULL, base));
+      l = strtol(word, &end_ptr, base);
+      if(end_ptr - word == word_len)
+	push(l);
+      else
+	mf_fprintf(stderr, "Error : undefined word\n");
     }
     else ((void (*)(void))word_addr)();
     print_stack();
