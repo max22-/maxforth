@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define mf_printf printf
 #define mf_read read
@@ -12,14 +13,18 @@
 #define MEMORY_SIZE 65536
 typedef long cell_t;
 cell_t *stack;
-void *memory, *here;
+void *memory, *here, *latest;
 unsigned int sp = 0;
 
 char word[256];
 unsigned char word_len=0;
 
 unsigned int base = 10;
+enum {IMMEDIATE, COMPILE} state = IMMEDIATE;
 
+#define F_IMMED 0x80
+#define F_HIDDEN 0x20
+#define F_LENMASK 0x1f
 
 int is_sep(char c)
 {
@@ -114,17 +119,40 @@ void divide()
   push(a / b);
 }
 
+void emit()
+{
+  char c = pop();
+  write(STDOUT_FILENO, &c, 1);
+}
+
 void _here()
 {
-  push(here);
+  push((cell_t)here);
 }
 
-static int define_builtin_words()
+void lbrac()
 {
-  
+  state = IMMEDIATE;
 }
 
-void *lookup(char *name, int len)
+void rbrac()
+{
+  state = COMPILE;
+}
+
+void create()
+{
+  unsigned char len = pop();
+  char* name = (char*)pop();
+  *((cell_t*)here) = (cell_t)latest;
+  here += sizeof(cell_t);
+  *((char*)here) = len;
+  here += 1;
+  memcpy(here, name, len);
+  here += len;
+}
+
+void *find(char *name, int len)
 {
   if(!strcmp(name, ".s"))
     return print_stack;
@@ -138,10 +166,16 @@ void *lookup(char *name, int len)
     return mul;
   else if(!strcmp(name, "/"))
     return divide;
+  else if(!strcmp(name, "emit"))
+    return emit;
+  else if(!strcmp(name, "create"))
+    return create;
   else if(!strcmp(name, "here"))
     return _here;
   return NULL;
 }
+
+
 
 int main(int argc, char *argv[])
 {
@@ -155,9 +189,11 @@ int main(int argc, char *argv[])
     mf_fprintf(stderr, "Not enough memory\n");
     return 1;
   }
+  mf_printf("cell_size : %ld bytes\n", sizeof(cell_t));
   mf_printf("stack size : %d cells\n", STACK_SIZE);
   memory = mf_malloc(MEMORY_SIZE);
   here = memory;
+  latest = NULL;
   if(memory == NULL) {
     mf_fprintf(stderr, "Not enough memory\n");
     return 1;
@@ -165,7 +201,7 @@ int main(int argc, char *argv[])
   mf_printf("memory : %d bytes\n", MEMORY_SIZE);
   
   while(get_next()) {
-    word_addr = lookup(word, word_len);
+    word_addr = find(word, word_len);
     if(word_addr == NULL) {
       l = strtol(word, &end_ptr, base);
       if(end_ptr - word == word_len)
